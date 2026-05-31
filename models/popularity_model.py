@@ -1,12 +1,12 @@
 import pandas as pd
 
+
 class PopularityRecommender:
 
     def __init__(self):
         self.popularity_df = None
 
     def fit(self, df):
-
         menu_stats = df.groupby(
             ['menu_id', 'menu_name', 'category']
         ).agg(
@@ -20,7 +20,6 @@ class PopularityRecommender:
             'total_transactions',
             'unique_customers'
         ]:
-
             min_val = menu_stats[col].min()
             max_val = menu_stats[col].max()
 
@@ -30,7 +29,7 @@ class PopularityRecommender:
             )
 
         menu_stats['popularity_score'] = (
-            0.4 * menu_stats['total_quantity_norm'] +
+            0.4  * menu_stats['total_quantity_norm'] +
             0.35 * menu_stats['total_transactions_norm'] +
             0.25 * menu_stats['unique_customers_norm']
         )
@@ -43,7 +42,6 @@ class PopularityRecommender:
         return self
 
     def recommend(self, top_n=5):
-
         return self.popularity_df.head(top_n)[[
             'menu_id',
             'menu_name',
