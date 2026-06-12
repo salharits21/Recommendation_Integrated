@@ -23,6 +23,9 @@ def clean_data(df):
     # Hapus baris customer_id kosong
     df = df.dropna(subset=['customer_id'])
 
+    # Ubah semua customer_id menjadi teks/string agar sama dengan URL Flask
+    df['customer_id'] = df['customer_id'].astype(str)
+
     # Imputasi quantity kosong dengan median per menu
     median_qty = df.groupby('menu_id')['quantity'].transform('median')
     df['quantity'] = df['quantity'].fillna(median_qty)
@@ -43,6 +46,6 @@ def clean_data(df):
     df = df.reset_index(drop=True)
 
     print(f"Shape setelah cleaning: {df.shape}")
-    print(df.isnull().sum())
+    print(f"Jumlah missing values:\n{df.isnull().sum()}")
 
     return df
