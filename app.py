@@ -2,6 +2,8 @@ from flask import Flask, jsonify
 import pandas as pd
 import requests
 import sys
+import os
+from dotenv import load_dotenv
 
 
 # IMPORT MODELS & UTILS
@@ -16,13 +18,15 @@ from utils.data_cleaning import clean_data
 # INIT FLASK
 app = Flask(__name__)
 
+# LOAD ENV VARIABLES
+load_dotenv()
 
 # LOAD DATASET FROM LARAVEL API
 try:
     print("Fetching transaction data from Laravel API...")
     response = requests.get(
         "http://localhost:8000/api/internal/transactions",
-        headers={"X-API-KEY": "secret_key_123"}
+        headers={"X-API-KEY": os.getenv("X_API_KEY")}
     )
     
     if response.status_code == 200:
