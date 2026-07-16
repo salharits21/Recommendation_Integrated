@@ -4,81 +4,71 @@ import requests
 import sys
 import os
 from dotenv import load_dotenv
-
+from apscheduler.schedulers.background import BackgroundScheduler # Tambahan baru
 
 # IMPORT MODELS & UTILS
 from models.popularity_model import PopularityRecommender
 from models.ibcf_model import IBCFRecommender
 from models.hybrid_model import HybridRecommender
-
 from utils.matrix_builder import build_user_item_matrix
 from utils.data_cleaning import clean_data
 
-
 # INIT FLASK
 app = Flask(__name__)
-
-# LOAD ENV VARIABLES
 load_dotenv()
 
-# LOAD DATASET FROM LARAVEL API
-try:
-    print("Fetching transaction data from Laravel API...")
-    response = requests.get(
-        "http://localhost:8000/api/internal/transactions",
-        headers={"X-API-KEY": os.getenv("X_API_KEY")}
-    )
-    
-    if response.status_code == 200:
-        data = response.json()
-        df_raw = pd.DataFrame(data)
-        print(f"Successfully loaded {len(df_raw)} transactions.")
-    else:
-        print(f"Failed to fetch data. Status Code: {response.status_code}")
-        print(f"Response: {response.text}")
-        sys.exit(1)
-        
-except Exception as e:
-    print(f"Error connecting to Laravel API: {e}")
-    sys.exit(1)
-
-
-# CLEAN DATA
-df = clean_data(df_raw)
-
-
-# BUILD USER ITEM MATRIX
-user_item_matrix = build_user_item_matrix(df)
-
-
-# MENU INFO
-menu_info = df[[
-    'menu_id',
-    'menu_name',
-    'category'
-]].drop_duplicates()
-
-
-# FIT POPULARITY MODEL
+# Deklarasi variabel global agar bisa diakses oleh rute (endpoints)
+df = None
 pop_model = PopularityRecommender()
-
-pop_model.fit(df)
-
-
-# FIT IBCF MODEL
 ibcf_model = IBCFRecommender()
+hybrid_model = HybridRecommender(pop_model, ibcf_model)
 
-ibcf_model.fit(
-    user_item_matrix,
-    menu_info
-)
+def fetch_and_train_models():
+    global df, pop_model, ibcf_model, hybrid_model
+    
+    try:
+        print("Fetching transaction data from Laravel API...")
+        response = requests.get(
+            os.getenv("BACKEND_URL") + "/api/internal/transactions",
+            headers={"X-API-KEY": os.getenv("X_API_KEY")}
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            df_raw = pd.DataFrame(data)
+            print(f"Successfully loaded {len(df_raw)} transactions.")
+            
+            # CLEAN DATA
+            df_new = clean_data(df_raw)
+            
+            # BUILD USER ITEM MATRIX
+            user_item_matrix = build_user_item_matrix(df_new)
+            
+            # MENU INFO
+            menu_info = df_new[['menu_id', 'menu_name', 'category']].drop_duplicates()
+            
+            # FIT MODELS (Update in memory)
+            pop_model.fit(df_new)
+            ibcf_model.fit(user_item_matrix, menu_info)
+            hybrid_model = HybridRecommender(pop_model, ibcf_model)
+            
+            # Update variabel global df setelah semua proses berhasil
+            df = df_new
+            print("Models successfully retrained and updated in memory.")
+            
+        else:
+            print(f"Failed to fetch data. Status Code: {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error connecting to Laravel API or training models: {e}")
 
-# FIT HYBRID MODEL
+# --- JALANKAN SEKALI SAAT APLIKASI STARTUP ---
+fetch_and_train_models()
 
-hybrid_model = HybridRecommender(
-    pop_model,
-    ibcf_model
-)
+# --- SETUP SCHEDULER UNTUK RUN TIAP JAM 00:01 ---
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=fetch_and_train_models, trigger="cron", hour=0, minute=1, timezone='Asia/Jakarta')
+scheduler.start()
 
 
 # HOME ROUTE
@@ -172,7 +162,7 @@ def popularity_recommendation():
 def ibcf_recommendation(customer_id):
     recommendations = ibcf_model.recommend(
         customer_id=customer_id,
-        top_n=3
+        top_n=5
     )
 
     if recommendations is None or recommendations.empty:
@@ -209,4 +199,8 @@ def hybrid_recommendation(customer_id):
 
 # RUN SERVER
 if __name__ == '__main__':
-    app.run(debug=True)
+    # scheduler mati dengan aman jika Flask dimatikan
+    try:
+        app.run(debug=True)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
