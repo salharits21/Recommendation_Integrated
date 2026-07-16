@@ -5,5 +5,4 @@ seaborn
 scikit-learn
 flask
 requests
-os
 dotenv
