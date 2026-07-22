@@ -158,8 +158,16 @@ def popularity_recommendation():
 
 
 # API IBCF RECOMMENDATION
+# API IBCF RECOMMENDATION
 @app.route('/ibcf/<customer_id>')
 def ibcf_recommendation(customer_id):
+    # Pastikan customer memang terdaftar di dataset
+    if df is not None and customer_id not in df['customer_id'].values:
+        return jsonify({
+            "status": "error",
+            "message": f"Customer ID '{customer_id}' tidak ditemukan dalam database."
+        }), 404
+
     recommendations = ibcf_model.recommend(
         customer_id=customer_id,
         top_n=5
@@ -167,13 +175,12 @@ def ibcf_recommendation(customer_id):
 
     if recommendations is None or recommendations.empty:
         return jsonify({
-            "message": "Customer tidak ditemukan"
+            "status": "success",
+            "message": "Tidak ada rekomendasi item baru (Customer mungkin sudah membeli semua menu).",
+            "data": []
         })
 
-    result = recommendations.to_dict(
-        orient='records'
-    )
-
+    result = recommendations.to_dict(orient='records')
     return jsonify(result)
 
 
